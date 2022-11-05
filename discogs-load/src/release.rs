@@ -274,10 +274,11 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                     self.current_release
                         .genres
                         .extend(str::parse(str::from_utf8(&e.unescaped()?)?));
-                    ParserReadState::Genres
+                    ParserReadState::Genre
                 }
+                Event::End(e) if e.local_name() == b"genre" => ParserReadState::Genres,
 
-                _ => ParserReadState::Genres,
+                _ => ParserReadState::Genre,
             },
 
             ParserReadState::Styles => match ev {
@@ -293,10 +294,12 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                     self.current_release
                         .styles
                         .extend(str::parse(str::from_utf8(&e.unescaped()?)?));
-                    ParserReadState::Styles
+                    ParserReadState::Style
                 }
 
-                _ => ParserReadState::Styles,
+                Event::End(e) if e.local_name() == b"style" => ParserReadState::Styles,
+
+                _ => ParserReadState::Style,
             },
 
             ParserReadState::MasterId => match ev {

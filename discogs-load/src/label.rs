@@ -207,10 +207,12 @@ impl<'a> Parser<'a> for LabelsParser<'a> {
                     self.current_label
                         .sublabels
                         .extend(str::parse(str::from_utf8(&e.unescaped()?)?));
-                    ParserState::Sublabels
+                    ParserState::Sublabel
                 }
 
-                _ => ParserState::Sublabels,
+                Event::End(e) if e.local_name() == b"label" => ParserState::Sublabels,
+
+                _ => ParserState::Sublabel,
             },
 
             ParserState::Urls => match ev {
@@ -226,10 +228,12 @@ impl<'a> Parser<'a> for LabelsParser<'a> {
                     self.current_label
                         .urls
                         .extend(str::parse(str::from_utf8(&e.unescaped()?)?));
-                    ParserState::Urls
+                    ParserState::Url
                 }
 
-                _ => ParserState::Urls,
+                Event::End(e) if e.local_name() == b"url" => ParserState::Urls,
+
+                _ => ParserState::Url,
             },
 
             ParserState::DataQuality => match ev {

@@ -219,7 +219,7 @@ impl<'a> Parser<'a> for MastersParser<'a> {
             ParserReadState::ArtistId => match ev {
                 Event::Text(e) => {
                     self.current_artist.id = str::parse(str::from_utf8(&e.unescaped()?)?)?;
-                    ParserReadState::Artists
+                    ParserReadState::ArtistId
                 }
 
                 Event::End(e) if e.local_name() == b"id" => ParserReadState::Artists,
@@ -230,7 +230,7 @@ impl<'a> Parser<'a> for MastersParser<'a> {
             ParserReadState::ArtistName => match ev {
                 Event::Text(e) => {
                     self.current_artist.name = str::parse(str::from_utf8(&e.unescaped()?)?)?;
-                    ParserReadState::Artists
+                    ParserReadState::ArtistName
                 }
 
                 Event::End(e) if e.local_name() == b"name" => ParserReadState::Artists,
@@ -241,7 +241,7 @@ impl<'a> Parser<'a> for MastersParser<'a> {
             ParserReadState::ArtistAnv => match ev {
                 Event::Text(e) => {
                     self.current_artist.anv = str::parse(str::from_utf8(&e.unescaped()?)?)?;
-                    ParserReadState::Artists
+                    ParserReadState::ArtistAnv
                 }
 
                 Event::End(e) if e.local_name() == b"anv" => ParserReadState::Artists,
@@ -252,7 +252,7 @@ impl<'a> Parser<'a> for MastersParser<'a> {
             ParserReadState::ArtistRole => match ev {
                 Event::Text(e) => {
                     self.current_artist.role = str::parse(str::from_utf8(&e.unescaped()?)?)?;
-                    ParserReadState::Artists
+                    ParserReadState::ArtistRole
                 }
 
                 Event::End(e) if e.local_name() == b"role" => ParserReadState::Artists,

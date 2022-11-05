@@ -67,6 +67,8 @@ enum ParserState {
     Aliases,
     Member,
     Members,
+    Groups,
+    Images,
 }
 
 pub struct ArtistsParser<'a> {
@@ -121,10 +123,16 @@ impl<'a> Parser<'a> for ArtistsParser<'a> {
                         b"namevariations" => ParserState::NameVariations,
                         b"aliases" => ParserState::Aliases,
                         b"members" => ParserState::Members,
-                        _ => ParserState::Artist,
+                        b"groups" => ParserState::Groups,
+                        b"images" => ParserState::Images,
+                        x => { 
+                            println!("{}", String::from_utf8_lossy(x));
+                            ParserState::Artist
+                        }
                     },
 
                     Event::End(e) if e.local_name() == b"artist" => {
+                        if self.current_artist.id == 170355 {println!("\n\nInserted DP\n\n")}
                         self.artists
                             .entry(self.current_artist.id)
                             .or_insert(self.current_artist.clone());
@@ -208,7 +216,7 @@ impl<'a> Parser<'a> for ArtistsParser<'a> {
 
                 Event::End(e) if e.local_name() == b"urls" => ParserState::Artist,
 
-                _ => ParserState::Artist,
+                _ => ParserState::Urls,
             },
 
             ParserState::Url => match ev {
@@ -219,7 +227,9 @@ impl<'a> Parser<'a> for ArtistsParser<'a> {
                     ParserState::Urls
                 }
 
-                _ => ParserState::Urls,
+                Event::End(e) if e.local_name() == b"url" => ParserState::Urls,
+
+                _ => ParserState::Url,
             },
 
             ParserState::Aliases => match ev {
@@ -227,7 +237,7 @@ impl<'a> Parser<'a> for ArtistsParser<'a> {
 
                 Event::End(e) if e.local_name() == b"aliases" => ParserState::Artist,
 
-                _ => ParserState::Artist,
+                _ => ParserState::Aliases,
             },
 
             ParserState::Alias => match ev {
@@ -238,7 +248,9 @@ impl<'a> Parser<'a> for ArtistsParser<'a> {
                     ParserState::Aliases
                 }
 
-                _ => ParserState::Aliases,
+                Event::End(e) if e.local_name() == b"alias" => ParserState::Aliases,
+
+                _ => ParserState::Alias,
             },
 
             ParserState::Members => match ev {
@@ -246,7 +258,28 @@ impl<'a> Parser<'a> for ArtistsParser<'a> {
 
                 Event::End(e) if e.local_name() == b"members" => ParserState::Artist,
 
-                _ => ParserState::Artist,
+                _ => ParserState::Members,
+            },
+
+            ParserState::Groups => match ev {
+                // Event::Start(e) if e.local_name() == b"member" => ParserState::Member,
+
+                Event::End(e) if e.local_name() == b"groups" => ParserState::Artist,
+                _ => ParserState::Groups,
+            },
+
+            ParserState::NameVariations => match ev {
+                // Event::Start(e) if e.local_name() == b"member" => ParserState::Member,
+
+                Event::End(e) if e.local_name() == b"namevariations" => ParserState::Artist,
+                _ => ParserState::NameVariations,
+            },
+
+            ParserState::Images => match ev {
+                // Event::Start(e) if e.local_name() == b"member" => ParserState::Member,
+
+                Event::End(e) if e.local_name() == b"images" => ParserState::Artist,
+                _ => ParserState::Images,
             },
 
             ParserState::Member => match ev {
@@ -260,7 +293,6 @@ impl<'a> Parser<'a> for ArtistsParser<'a> {
                 _ => ParserState::Members,
             },
 
-            _ => ParserState::Members,
         };
 
         Ok(())
