@@ -1,6 +1,7 @@
 DROP TABLE IF EXISTS release CASCADE;
 DROP TABLE IF EXISTS release_label CASCADE;
 DROP TABLE IF EXISTS release_video CASCADE;
+DROP TABLE IF EXISTS track CASCADE;
 
 CREATE TABLE release (
     id int NOT NULL,
@@ -29,4 +30,12 @@ CREATE TABLE release_video (
     duration int,
     src text,
     title text
+);
+
+CREATE TABLE track (
+    id serial,
+    release_id int NOT NULL,
+    title text,
+    position text,
+    duration text
 );

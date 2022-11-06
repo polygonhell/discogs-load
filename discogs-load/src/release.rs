@@ -7,6 +7,37 @@ use crate::db::{write_releases, DbOpt, SqlSerialization};
 use crate::parser::Parser;
 
 #[derive(Clone, Debug)]
+pub struct Track {
+    position: String,
+    title: String,
+    duration: String,
+    release_id: i32,
+}
+
+impl Track {
+    fn new(release_id: i32) -> Track {
+        Track {
+            release_id,
+            position: String::new(),
+            title: String::new(),
+            duration: String::new(),
+        }
+    }
+}
+
+impl SqlSerialization for Track {
+    fn to_sql(&self) -> Vec<&'_ (dyn ToSql + Sync)> {
+        let row: Vec<&'_ (dyn ToSql + Sync)> = vec![
+            &self.release_id,
+            &self.title,
+            &self.position,
+            &self.duration,
+        ];
+        row
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Release {
     pub id: i32,
     pub status: String,
@@ -105,6 +136,19 @@ enum ParserReadState {
     Labels,
     // release_video
     Videos,
+
+    TrackList,
+    Track,
+    TrackPosition,
+    TrackTitle,
+    TrackDuration,
+
+    Images,
+    Artists,
+    ExtraArtists,
+    Formats,
+    Identifiers,
+    Companies,
 }
 
 pub struct ReleasesParser<'a> {
@@ -115,6 +159,8 @@ pub struct ReleasesParser<'a> {
     release_labels: HashMap<i32, ReleaseLabel>,
     current_video_id: i32,
     release_videos: HashMap<i32, ReleaseVideo>,
+    current_track_id: i32,
+    tracks: HashMap<i32, Track>,
     pb: ProgressBar,
     db_opts: &'a DbOpt,
 }
@@ -129,6 +175,8 @@ impl<'a> ReleasesParser<'a> {
             release_labels: HashMap::new(),
             current_video_id: 0,
             release_videos: HashMap::new(),
+            current_track_id: 0,
+            tracks: HashMap::new(),
             pb: ProgressBar::new(14976967), // https://api.discogs.com/
             db_opts,
         }
@@ -145,6 +193,8 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
             release_labels: HashMap::new(),
             current_video_id: 0,
             release_videos: HashMap::new(),
+            current_track_id: 0,
+            tracks: HashMap::new(),
             pb: ProgressBar::new(14976967), // https://api.discogs.com/
             db_opts,
         }
@@ -178,6 +228,13 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                         b"data_quality" => ParserReadState::DataQuality,
                         b"labels" => ParserReadState::Labels,
                         b"videos" => ParserReadState::Videos,
+                        b"tracklist" => ParserReadState::TrackList,
+                        b"images" => ParserReadState::Images,
+                        b"artists" => ParserReadState::Artists,
+                        b"extraartists" => ParserReadState::ExtraArtists,
+                        b"formats" => ParserReadState::Formats,
+                        b"identifiers" => ParserReadState::Identifiers,
+                        b"companies" => ParserReadState::Companies,
                         _ => ParserReadState::Release,
                     },
 
@@ -193,10 +250,12 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                                 &self.releases,
                                 &self.release_labels,
                                 &self.release_videos,
+                                &self.tracks,
                             )?;
                             self.releases = HashMap::new();
                             self.release_labels = HashMap::new();
                             self.release_videos = HashMap::new();
+                            self.tracks = HashMap::new();
                         }
                         self.pb.inc(1);
                         ParserReadState::Release
@@ -209,6 +268,7 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                             &self.releases,
                             &self.release_labels,
                             &self.release_videos,
+                            &self.tracks,
                         )?;
                         ParserReadState::Release
                     }
@@ -216,6 +276,116 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                     _ => ParserReadState::Release,
                 }
             }
+
+            // Just eat this for now
+            ParserReadState::TrackList => match ev {
+                Event::Start(e) => match e.local_name() {
+                    b"track" => ParserReadState::Track,
+                    _ => ParserReadState::TrackList,
+                },
+
+                Event::End(e) if e.local_name() == b"tracklist" => ParserReadState::Release,
+
+                _ => ParserReadState::TrackList,
+            },
+
+            ParserReadState::Track => match ev {
+                Event::Start(e) => match e.local_name() {
+                    b"title" => ParserReadState::TrackTitle,
+                    b"position" => ParserReadState::TrackPosition,
+                    b"duration" => ParserReadState::TrackDuration,
+                    _ => ParserReadState::Track,
+                },
+
+                Event::End(e) if e.local_name() == b"track" => {
+                    self.current_track_id += 1;
+                    ParserReadState::TrackList
+                }
+
+                _ => ParserReadState::Track,
+            },
+
+            ParserReadState::TrackTitle => match ev {
+                Event::Text(e) => {
+                    let track = self
+                        .tracks
+                        .entry(self.current_track_id)
+                        .or_insert(Track::new(self.current_id));
+                    track.title = str::parse(str::from_utf8(&e.unescaped()?)?)?;
+                    ParserReadState::TrackTitle
+                }
+
+                Event::End(e) if e.local_name() == b"title" => ParserReadState::Track,
+
+                _ => ParserReadState::TrackTitle,
+            },
+
+            ParserReadState::TrackPosition => match ev {
+                Event::Text(e) => {
+                    let track = self
+                        .tracks
+                        .entry(self.current_track_id)
+                        .or_insert(Track::new(self.current_id));
+                    track.position = str::parse(str::from_utf8(&e.unescaped()?)?)?;
+                    ParserReadState::TrackPosition
+                }
+
+                Event::End(e) if e.local_name() == b"position" => ParserReadState::Track,
+
+                _ => ParserReadState::TrackPosition,
+            },
+
+            ParserReadState::TrackDuration => match ev {
+                Event::Text(e) => {
+                    let track = self
+                        .tracks
+                        .entry(self.current_track_id)
+                        .or_insert(Track::new(self.current_id));
+                    track.duration = str::parse(str::from_utf8(&e.unescaped()?)?)?;
+                    ParserReadState::TrackDuration
+                }
+
+                Event::End(e) if e.local_name() == b"duration" => ParserReadState::Track,
+
+                _ => ParserReadState::TrackDuration,
+            },
+
+            ParserReadState::Companies => match ev {
+                Event::End(e) if e.local_name() == b"companies" => ParserReadState::Release,
+
+                _ => ParserReadState::Companies,
+            },
+
+            ParserReadState::Identifiers => match ev {
+                Event::End(e) if e.local_name() == b"identifiers" => ParserReadState::Release,
+
+                _ => ParserReadState::Identifiers,
+            },
+
+            ParserReadState::Artists => match ev {
+                Event::End(e) if e.local_name() == b"artists" => ParserReadState::Release,
+
+                _ => ParserReadState::Artists,
+            },
+
+            ParserReadState::ExtraArtists => match ev {
+                Event::End(e) if e.local_name() == b"extraartists" => ParserReadState::Release,
+
+                _ => ParserReadState::ExtraArtists,
+            },
+
+            // Just eat this
+            ParserReadState::Images => match ev {
+                Event::End(e) if e.local_name() == b"images" => ParserReadState::Release,
+
+                _ => ParserReadState::Images,
+            },
+
+            ParserReadState::Formats => match ev {
+                Event::End(e) if e.local_name() == b"formats" => ParserReadState::Release,
+
+                _ => ParserReadState::Formats,
+            },
 
             ParserReadState::Title => match ev {
                 Event::Text(e) => {
@@ -325,6 +495,7 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                 _ => ParserReadState::DataQuality,
             },
 
+            // TODO Verify this is sufficient
             ParserReadState::Labels => match ev {
                 Event::Empty(e) => {
                     let label_id = str::parse(str::from_utf8(
@@ -350,6 +521,7 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                 _ => ParserReadState::Labels,
             },
 
+            // TODO Fix this
             ParserReadState::Videos => match ev {
                 Event::Start(e) if e.local_name() == b"video" => {
                     self.release_videos
