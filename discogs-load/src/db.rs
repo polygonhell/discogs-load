@@ -8,7 +8,7 @@ use structopt::StructOpt;
 use crate::artist::Artist;
 use crate::label::Label;
 use crate::master::{Master, MasterArtist};
-use crate::release::{Release, ReleaseLabel, ReleaseVideo, Track};
+use crate::release::{Release, ReleaseLabel, ReleaseVideo, Track, Format};
 
 #[derive(Debug, Clone, StructOpt)]
 pub struct DbOpt {
@@ -57,7 +57,8 @@ pub fn write_releases(
     releases: &HashMap<i32, Release>,
     releases_labels: &HashMap<i32, ReleaseLabel>,
     releases_videos: &HashMap<i32, ReleaseVideo>,
-    tracks: &HashMap<i32, Track>
+    tracks: &HashMap<i32, Track>,
+    formats: &HashMap<i32, Format>
 ) -> Result<()> {
     let mut db = Db::connect(db_opts)?;
     Db::write_rows(&mut db, releases, InsertCommand::new(
@@ -103,6 +104,16 @@ pub fn write_releases(
             &[Type::INT4, Type::TEXT, Type::TEXT, Type::TEXT],
         )?,
     )?;
+
+    Db::write_rows(
+        &mut db,
+        formats,
+        InsertCommand::new(
+            "format",
+            "(release_id, name, qty, text)",
+            &[Type::INT4, Type::TEXT, Type::TEXT, Type::TEXT],
+        )?,
+    )?;    
 
     Ok(())
 }

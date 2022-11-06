@@ -12,6 +12,7 @@ CREATE INDEX idx_release on release(id);
 CREATE INDEX idx_release_video on release_video(release_id);
 CREATE INDEX idx_release_label on release_label(release_id);
 CREATE INDEX idx_track on track(release_id);
+CREATE INDEX idx_format on format(release_id);
 
 CREATE INDEX idx_master_artist_master on master_artist(master_id);
 CREATE INDEX idx_master_artist_artist on master_artist(artist_id);

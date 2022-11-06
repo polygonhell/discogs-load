@@ -14,6 +14,34 @@ pub struct Track {
     release_id: i32,
 }
 
+#[derive(Clone, Debug)]
+pub struct Format {
+    name: String,
+    qty: String,
+    text: String,
+    release_id: i32,
+    // TODO Descriptions
+}
+
+impl Format {
+    fn new(release_id: i32, name: String, qty: String, text: String) -> Format {
+        Format { name, qty, text, release_id }
+    }    
+}
+
+impl SqlSerialization for Format {
+    fn to_sql(&self) -> Vec<&'_ (dyn ToSql + Sync)> {
+        let row: Vec<&'_ (dyn ToSql + Sync)> = vec![
+            &self.release_id,
+            &self.name,
+            &self.qty,
+            &self.text,
+        ];
+        row
+    }
+}
+
+
 impl Track {
     fn new(release_id: i32) -> Track {
         Track {
@@ -50,6 +78,7 @@ pub struct Release {
     pub master_id: i32,
     pub data_quality: String,
 }
+
 
 impl SqlSerialization for Release {
     fn to_sql(&self) -> Vec<&'_ (dyn ToSql + Sync)> {
@@ -102,9 +131,9 @@ impl SqlSerialization for ReleaseVideo {
 }
 
 impl Release {
-    pub fn new() -> Self {
+    pub fn new(id: i32) -> Self {
         Release {
-            id: 0,
+            id,
             status: String::new(),
             title: String::new(),
             country: String::new(),
@@ -147,6 +176,7 @@ enum ParserReadState {
     Artists,
     ExtraArtists,
     Formats,
+    Format,
     Identifiers,
     Companies,
 }
@@ -161,6 +191,8 @@ pub struct ReleasesParser<'a> {
     release_videos: HashMap<i32, ReleaseVideo>,
     current_track_id: i32,
     tracks: HashMap<i32, Track>,
+    current_format_id: i32,
+    formats: HashMap<i32, Format>,
     pb: ProgressBar,
     db_opts: &'a DbOpt,
 }
@@ -170,13 +202,15 @@ impl<'a> ReleasesParser<'a> {
         ReleasesParser {
             state: ParserReadState::Release,
             releases: HashMap::new(),
-            current_release: Release::new(),
+            current_release: Release::new(0),
             current_id: 0,
             release_labels: HashMap::new(),
             current_video_id: 0,
             release_videos: HashMap::new(),
             current_track_id: 0,
             tracks: HashMap::new(),
+            current_format_id: 0,
+            formats: HashMap::new(),
             pb: ProgressBar::new(14976967), // https://api.discogs.com/
             db_opts,
         }
@@ -188,13 +222,15 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
         ReleasesParser {
             state: ParserReadState::Release,
             releases: HashMap::new(),
-            current_release: Release::new(),
+            current_release: Release::new(0),
             current_id: 0,
             release_labels: HashMap::new(),
             current_video_id: 0,
             release_videos: HashMap::new(),
             current_track_id: 0,
             tracks: HashMap::new(),
+            current_format_id: 0,
+            formats: HashMap::new(),
             pb: ProgressBar::new(14976967), // https://api.discogs.com/
             db_opts,
         }
@@ -205,15 +241,13 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
             ParserReadState::Release => {
                 match ev {
                     Event::Start(e) if e.local_name() == b"release" => {
-                        self.current_release.status = str::parse(str::from_utf8(
-                            &e.attributes().nth(1).unwrap()?.unescaped_value()?,
-                        )?)?;
                         self.current_id = str::parse(str::from_utf8(
                             &e.attributes().next().unwrap()?.unescaped_value()?,
                         )?)?;
-                        self.current_release.id = self.current_id;
-                        self.current_release.genres = Vec::new();
-                        self.current_release.styles = Vec::new();
+                        self.current_release = Release::new(self.current_id);
+                        self.current_release.status = str::parse(str::from_utf8(
+                            &e.attributes().nth(1).unwrap()?.unescaped_value()?,
+                        )?)?;
                         ParserReadState::Release
                     }
 
@@ -251,11 +285,13 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                                 &self.release_labels,
                                 &self.release_videos,
                                 &self.tracks,
+                                &self.formats,
                             )?;
                             self.releases = HashMap::new();
                             self.release_labels = HashMap::new();
                             self.release_videos = HashMap::new();
                             self.tracks = HashMap::new();
+                            self.formats = HashMap::new();
                         }
                         self.pb.inc(1);
                         ParserReadState::Release
@@ -269,6 +305,7 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                             &self.release_labels,
                             &self.release_videos,
                             &self.tracks,
+                            &self.formats,
                         )?;
                         ParserReadState::Release
                     }
@@ -382,9 +419,37 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
             },
 
             ParserReadState::Formats => match ev {
+                Event::Start(e) if e.local_name() == b"format" => {
+                    let name: String = match e.attributes().find(|a| a.as_ref().unwrap().key == b"name") {
+                        Some(Ok(a)) => str::parse(str::from_utf8(&a.value)?)?,
+                        _ => "".to_string()
+                    };
+                    let qty: String = match e.attributes().find(|a| a.as_ref().unwrap().key == b"qty") {
+                        Some(Ok(a)) => str::parse(str::from_utf8(&a.value)?)?,
+                        _ => "".to_string()
+                    };
+                    let text: String = match e.attributes().find(|a| a.as_ref().unwrap().key == b"text") {
+                        Some(Ok(a)) => str::parse(str::from_utf8(&a.value)?)?,
+                        _ => "".to_string()
+                    };
+
+                    self.formats.insert(self.current_format_id, Format::new(self.current_id, name, qty, text));
+                    ParserReadState::Format
+                },
+
                 Event::End(e) if e.local_name() == b"formats" => ParserReadState::Release,
 
+
                 _ => ParserReadState::Formats,
+            },
+
+            ParserReadState::Format => match ev {
+                Event::End(e) if e.local_name() == b"format" => {
+                    self.current_format_id += 1;
+                    ParserReadState::Formats
+                },
+
+                _ => ParserReadState::Format,
             },
 
             ParserReadState::Title => match ev {
