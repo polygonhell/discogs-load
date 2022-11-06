@@ -85,7 +85,10 @@ enum ParserReadState {
     MainRelease,
     Artists,
     Title,
+    Year,
     DataQuality,
+    Videos,
+    Notes,
     // master_artists
     ArtistId,
     ArtistName,
@@ -148,8 +151,11 @@ impl<'a> Parser<'a> for MastersParser<'a> {
                     Event::Start(e) => match e.local_name() {
                         b"main_release" => ParserReadState::MainRelease,
                         b"title" => ParserReadState::Title,
+                        b"year" => ParserReadState::Year,
                         b"artists" => ParserReadState::Artists,
                         b"data_quality" => ParserReadState::DataQuality,
+                        b"videos" => ParserReadState::Videos,
+                        b"notes" => ParserReadState::Notes,
                         _ => ParserReadState::Master,
                     },
 
@@ -271,6 +277,28 @@ impl<'a> Parser<'a> for MastersParser<'a> {
                 _ => ParserReadState::Title,
             },
 
+            ParserReadState::Notes => match ev {
+                Event::Text(e) => {
+                    self.current_master.notes = str::parse(str::from_utf8(&e.unescaped()?)?)?;
+                    ParserReadState::Notes
+                }
+
+                Event::End(e) if e.local_name() == b"notes" => ParserReadState::Master,
+
+                _ => ParserReadState::Notes,
+            },
+
+            ParserReadState::Year => match ev {
+                Event::Text(e) => {
+                    self.current_master.year = str::parse(str::from_utf8(&e.unescaped()?)?).unwrap_or(0);
+                    ParserReadState::Year
+                }
+
+                Event::End(e) if e.local_name() == b"year" => ParserReadState::Master,
+
+                _ => ParserReadState::Year,
+            },
+
             ParserReadState::DataQuality => match ev {
                 Event::Text(e) => {
                     self.current_master.data_quality =
@@ -281,6 +309,12 @@ impl<'a> Parser<'a> for MastersParser<'a> {
                 Event::End(e) if e.local_name() == b"data_quality" => ParserReadState::Master,
 
                 _ => ParserReadState::DataQuality,
+            },
+
+            ParserReadState::Videos => match ev {
+                Event::End(e) if e.local_name() == b"videos" => ParserReadState::Master,
+
+                _ => ParserReadState::Videos,
             },
         };
 
