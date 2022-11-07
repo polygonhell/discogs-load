@@ -1,6 +1,7 @@
 use indicatif::ProgressBar;
 use postgres::types::ToSql;
 use quick_xml::events::Event;
+use std::collections::BTreeMap;
 use std::{collections::HashMap, error::Error, str};
 
 use crate::db::{write_releases, DbOpt, SqlSerialization};
@@ -190,9 +191,9 @@ pub struct ReleasesParser<'a> {
     current_video_id: i32,
     release_videos: HashMap<i32, ReleaseVideo>,
     current_track_id: i32,
-    tracks: HashMap<i32, Track>,
+    tracks: BTreeMap<i32, Track>,
     current_format_id: i32,
-    formats: HashMap<i32, Format>,
+    formats: BTreeMap<i32, Format>,
     pb: ProgressBar,
     db_opts: &'a DbOpt,
 }
@@ -208,9 +209,9 @@ impl<'a> ReleasesParser<'a> {
             current_video_id: 0,
             release_videos: HashMap::new(),
             current_track_id: 0,
-            tracks: HashMap::new(),
+            tracks: BTreeMap::new(),
             current_format_id: 0,
-            formats: HashMap::new(),
+            formats: BTreeMap::new(),
             pb: ProgressBar::new(14976967), // https://api.discogs.com/
             db_opts,
         }
@@ -228,9 +229,9 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
             current_video_id: 0,
             release_videos: HashMap::new(),
             current_track_id: 0,
-            tracks: HashMap::new(),
+            tracks: BTreeMap::new(),
             current_format_id: 0,
-            formats: HashMap::new(),
+            formats: BTreeMap::new(),
             pb: ProgressBar::new(14976967), // https://api.discogs.com/
             db_opts,
         }
@@ -290,8 +291,8 @@ impl<'a> Parser<'a> for ReleasesParser<'a> {
                             self.releases = HashMap::new();
                             self.release_labels = HashMap::new();
                             self.release_videos = HashMap::new();
-                            self.tracks = HashMap::new();
-                            self.formats = HashMap::new();
+                            self.tracks = BTreeMap::new();
+                            self.formats = BTreeMap::new();
                         }
                         self.pb.inc(1);
                         ParserReadState::Release

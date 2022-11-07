@@ -2,6 +2,7 @@ use anyhow::Result;
 use log::info;
 use postgres::types::{ToSql, Type};
 use postgres::{binary_copy::BinaryCopyInWriter, Client, NoTls};
+use std::collections::BTreeMap;
 use std::{collections::HashMap, fs};
 use structopt::StructOpt;
 
@@ -57,11 +58,11 @@ pub fn write_releases(
     releases: &HashMap<i32, Release>,
     releases_labels: &HashMap<i32, ReleaseLabel>,
     releases_videos: &HashMap<i32, ReleaseVideo>,
-    tracks: &HashMap<i32, Track>,
-    formats: &HashMap<i32, Format>
+    tracks: &BTreeMap<i32, Track>,
+    formats: &BTreeMap<i32, Format>
 ) -> Result<()> {
     let mut db = Db::connect(db_opts)?;
-    Db::write_rows(&mut db, releases, InsertCommand::new(
+    Db::write_rows(&mut db, &mut releases.values(), InsertCommand::new(
         "release",
         "(id, status, title, country, released, notes, genres, styles, master_id, data_quality)",
         &[
@@ -79,7 +80,7 @@ pub fn write_releases(
     )?)?;
     Db::write_rows(
         &mut db,
-        releases_labels,
+        &mut releases_labels.values(),
         InsertCommand::new(
             "release_label",
             "(release_id, label, catno, label_id)",
@@ -88,7 +89,7 @@ pub fn write_releases(
     )?;
     Db::write_rows(
         &mut db,
-        releases_videos,
+        &mut releases_videos.values(),
         InsertCommand::new(
             "release_video",
             "(release_id, duration, src, title)",
@@ -97,7 +98,7 @@ pub fn write_releases(
     )?;
     Db::write_rows(
         &mut db,
-        tracks,
+        &mut tracks.values(),
         InsertCommand::new(
             "track",
             "(release_id, title, position, duration)",
@@ -107,7 +108,7 @@ pub fn write_releases(
 
     Db::write_rows(
         &mut db,
-        formats,
+        &mut formats.values(),
         InsertCommand::new(
             "format",
             "(release_id, name, qty, text)",
@@ -122,7 +123,7 @@ pub fn write_labels(db_opts: &DbOpt, labels: &HashMap<i32, Label>) -> Result<()>
     let mut db = Db::connect(db_opts)?;
     Db::write_rows(
         &mut db,
-        labels,
+        &mut labels.values(),
         InsertCommand::new(
             "label",
             "(id, name, contactinfo, profile, parent_label, sublabels, urls, data_quality)",
@@ -145,7 +146,7 @@ pub fn write_artists(db_opts: &DbOpt, artists: &HashMap<i32, Artist>) -> Result<
     let mut db = Db::connect(db_opts)?;
     Db::write_rows(
         &mut db,
-        artists,
+        &mut artists.values(),
         InsertCommand::new(
             "artist",
             "(id, name, real_name, profile, data_quality, name_variations, urls, aliases, members)",
@@ -173,7 +174,7 @@ pub fn write_masters(
     let mut db = Db::connect(db_opts)?;
     Db::write_rows(
         &mut db,
-        masters,
+        &mut masters.values(),
         InsertCommand::new(
             "master",
             "(id, title, release_id, year, notes, genres, styles, data_quality)",
@@ -191,7 +192,7 @@ pub fn write_masters(
     )?;
     Db::write_rows(
         &mut db,
-        masters_artists,
+        &mut masters_artists.values(),
         InsertCommand::new(
             "master_artist",
             "(artist_id, master_id, name, anv, role)",
@@ -216,11 +217,11 @@ impl Db {
         Ok(Db { db_client: client })
     }
 
-    fn write_rows<T: SqlSerialization>(
-        &mut self,
-        data: &HashMap<i32, T>,
-        insert_cmd: InsertCommand,
-    ) -> Result<()> {
+    fn write_rows<'a, I, T>(&mut self, data: &'a mut I, insert_cmd: InsertCommand<'a>) -> Result<()>
+    where 
+        I: Iterator<Item = &'a T>,
+        T: SqlSerialization + 'a
+    {
         insert_cmd.execute(&mut self.db_client, data)?;
         Ok(())
     }
@@ -245,16 +246,15 @@ impl<'a> InsertCommand<'a> {
         })
     }
 
-    fn execute<T>(&self, client: &mut Client, data: &HashMap<i32, T>) -> Result<()>
+    fn execute<T, I>(&self, client: &mut Client, data: &mut I) -> Result<()>
     where
-        T: SqlSerialization,
+        I: Iterator<Item = &'a T>,
+        T: SqlSerialization + 'a,
     {
         let sink = client.copy_in(&self.copy_stm)?;
         let mut writer = BinaryCopyInWriter::new(sink, self.col_types);
 
-        for values in data.values() {
-            writer.write(&values.to_sql())?;
-        }
+        data.for_each(|v| {writer.write(&v.to_sql()).unwrap()});
 
         writer.finish()?;
         Ok(())
